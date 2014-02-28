@@ -1,5 +1,6 @@
+
 /*
- * Copyright (c) 2013 Roman Arutyunyan
+ * Copyright (C) Roman Arutyunyan
  */
 
 
@@ -15,7 +16,7 @@ static ngx_rtmp_play_pt     next_play;
 static ngx_int_t ngx_rtmp_log_postconfiguration(ngx_conf_t *cf);
 static void *ngx_rtmp_log_create_main_conf(ngx_conf_t *cf);
 static void * ngx_rtmp_log_create_app_conf(ngx_conf_t *cf);
-static char * ngx_rtmp_log_merge_app_conf(ngx_conf_t *cf, 
+static char * ngx_rtmp_log_merge_app_conf(ngx_conf_t *cf,
        void *parent, void *child);
 static char * ngx_rtmp_log_set_log(ngx_conf_t *cf, ngx_command_t *cmd,
        void *conf);
@@ -185,6 +186,26 @@ ngx_rtmp_log_var_remote_addr_getdata(ngx_rtmp_session_t *s, u_char *buf,
 {
     return ngx_cpymem(buf, s->connection->addr_text.data,
                            s->connection->addr_text.len);
+}
+
+
+static size_t
+ngx_rtmp_log_var_msec_getlen(ngx_rtmp_session_t *s,
+    ngx_rtmp_log_op_t *op)
+{
+    return NGX_TIME_T_LEN + 4;
+}
+
+
+static u_char *
+ngx_rtmp_log_var_msec_getdata(ngx_rtmp_session_t *s, u_char *buf,
+    ngx_rtmp_log_op_t *op)
+{
+    ngx_time_t  *tp;
+
+    tp = ngx_timeofday();
+    
+    return ngx_sprintf(buf, "%T.%03M", tp->sec, tp->msec);
 }
 
 
@@ -428,6 +449,11 @@ static ngx_rtmp_log_var_t ngx_rtmp_log_vars[] = {
     { ngx_string("time_local"),
       ngx_rtmp_log_var_time_local_getlen,
       ngx_rtmp_log_var_time_local_getdata,
+      0 },
+
+    { ngx_string("msec"),
+      ngx_rtmp_log_var_msec_getlen,
+      ngx_rtmp_log_var_msec_getdata,
       0 },
 
     { ngx_string("session_time"),
@@ -888,7 +914,7 @@ ngx_rtmp_log_write(ngx_rtmp_session_t *s, ngx_rtmp_log_t *log, u_char *buf,
 
 
 static ngx_int_t
-ngx_rtmp_log_disconnect(ngx_rtmp_session_t *s, ngx_rtmp_header_t *h, 
+ngx_rtmp_log_disconnect(ngx_rtmp_session_t *s, ngx_rtmp_header_t *h,
                         ngx_chain_t *in)
 {
     ngx_rtmp_log_app_conf_t    *lacf;

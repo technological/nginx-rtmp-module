@@ -1,4 +1,4 @@
-# NGINX-based RTMP server
+# NGINX-based Media Streaming Server
 ## nginx-rtmp-module
 
 
@@ -22,9 +22,9 @@
 
 ### Features
 
-* Live streaming of video/audio
+* RTMP/HLS/MPEG-DASH live streaming
 
-* Video on demand FLV/MP4,
+* RTMP Video on demand FLV/MP4,
   playing from local filesystem or HTTP
 
 * Stream relay support for distributed
@@ -35,8 +35,6 @@
 * H264/AAC support
 
 * Online transcoding with FFmpeg
-
-* HLS (HTTP Live Streaming) support
 
 * HTTP callbacks (publish/play/record/update etc)
 
@@ -49,9 +47,9 @@
   level for faster streaming and low
   memory footprint
 
-* Proved to work with Wirecast,FMS,Wowza,
-  JWPlayer,FlowPlayer,StrobeMediaPlayback,
-  ffmpeg,avconv,rtmpdump,flvstreamer 
+* Proved to work with Wirecast, FMS, Wowza,
+  JWPlayer, FlowPlayer, StrobeMediaPlayback,
+  ffmpeg, avconv, rtmpdump, flvstreamer
   and many more
 
 * Statistics in XML/XSL in machine- & human-
@@ -63,14 +61,20 @@
 
 cd to NGINX source directory & run this:
 
-    ./configure --add-module=<path-to-nginx-rtmp-module>
+    ./configure --add-module=/path/to/nginx-rtmp-module
     make
     make install
 
 Several versions of nginx (1.3.14 - 1.5.0) require http_ssl_module to be
 added as well:
 
-    ./configure --add-module=<path-to-nginx-rtmp-module> --with-http_ssl_module
+    ./configure --add-module=/path/to/nginx-rtmp-module --with-http_ssl_module
+
+For building debug version of nginx add `--with-debug`
+
+    ./configure --add-module=/path/to-nginx/rtmp-module --with-debug
+
+[Read more about debug log](https://github.com/arut/nginx-rtmp-module/wiki/Debug-log)
 
 ### Windows limitations
 
@@ -146,7 +150,8 @@ rtmp_auto_push directive.
                 #
                 # Multiple exec lines can be specified.
 
-                exec ffmpeg -re -i rtmp://localhost:1935/$app/$name -vcodec flv -acodec copy -s 32x32 -f flv rtmp://localhost:1935/small/${name};
+                exec ffmpeg -re -i rtmp://localhost:1935/$app/$name -vcodec flv -acodec copy -s 32x32
+                            -f flv rtmp://localhost:1935/small/${name};
             }
 
             application small {
@@ -158,14 +163,15 @@ rtmp_auto_push directive.
                 live on;
 
                 # Stream from local webcam
-                exec_static ffmpeg -f video4linux2 -i /dev/video0 -c:v libx264 -an -f flv rtmp://localhost:1935/webcam/mystream;
+                exec_static ffmpeg -f video4linux2 -i /dev/video0 -c:v libx264 -an
+                                   -f flv rtmp://localhost:1935/webcam/mystream;
             }
 
             application mypush {
                 live on;
 
                 # Every stream published here
-                # is automatically pushed to 
+                # is automatically pushed to
                 # these two machines
                 push rtmp1.example.com;
                 push rtmp2.example.com:1934;
@@ -178,7 +184,7 @@ rtmp_auto_push directive.
                 # and play locally
                 pull rtmp://rtmp3.example.com pageUrl=www.example.com/index.html;
             }
-            
+
             application mystaticpull {
                 live on;
 
@@ -201,8 +207,8 @@ rtmp_auto_push directive.
 
                 live on;
 
-                # The following notifications receive all 
-                # the session variables as well as 
+                # The following notifications receive all
+                # the session variables as well as
                 # particular call arguments in HTTP POST
                 # request
 
@@ -218,7 +224,7 @@ rtmp_auto_push directive.
                 on_done http://localhost:8080/done;
 
                 # All above mentioned notifications receive
-                # standard connect() arguments as well as 
+                # standard connect() arguments as well as
                 # play/publish ones. If any arguments are sent
                 # with GET-style syntax to play & publish
                 # these are also included.
@@ -239,7 +245,7 @@ rtmp_auto_push directive.
 
             # HLS
 
-            # For HLS to work please create a directory in tmpfs (/tmp/app here)
+            # For HLS to work please create a directory in tmpfs (/tmp/hls here)
             # for the fragments. The directory contents is served via HTTP (see
             # http{} section in config)
             #
@@ -247,8 +253,8 @@ rtmp_auto_push directive.
             # profile (see ffmpeg example).
             # This example creates RTMP stream from movie ready for HLS:
             #
-            # ffmpeg -loglevel verbose -re -i movie.avi  -vcodec libx264 
-            #    -vprofile baseline -acodec libmp3lame -ar 44100 -ac 1 
+            # ffmpeg -loglevel verbose -re -i movie.avi  -vcodec libx264
+            #    -vprofile baseline -acodec libmp3lame -ar 44100 -ac 1
             #    -f flv rtmp://localhost:1935/hls/movie
             #
             # If you need to transcode live stream use 'exec' feature.
@@ -256,10 +262,16 @@ rtmp_auto_push directive.
             application hls {
                 live on;
                 hls on;
-                hls_path /tmp/app;
-                hls_fragment 5s;
+                hls_path /tmp/hls;
             }
 
+            # MPEG-DASH is similar to HLS
+
+            application dash {
+                live on;
+                dash on;
+                dash_path /tmp/dash;
+            }
         }
     }
 
@@ -292,10 +304,15 @@ rtmp_auto_push directive.
                     application/vnd.apple.mpegurl m3u8;
                     video/mp2t ts;
                 }
-                alias /tmp/app;
-                expires -1;
+                root /tmp;
+                add_header Cache-Control no-cache;
             }
 
+            location /dash {
+                # Serve DASH fragments
+                root /tmp;
+                add_header Cache-Control no-cache;
+            }
         }
     }
 
@@ -305,14 +322,9 @@ rtmp_auto_push directive.
     rtmp_auto_push on;
 
     rtmp {
-
         server {
-
             listen 1935;
 
-            chunk_size 4000;
-
-            # TV mode: one publisher, many subscribers
             application mytv {
                 live on;
             }

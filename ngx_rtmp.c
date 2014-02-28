@@ -1,11 +1,13 @@
+
 /*
- * Copyright (c) 2012 Roman Arutyunyan
+ * Copyright (C) Roman Arutyunyan
  */
 
 
 #include <ngx_config.h>
 #include <ngx_core.h>
 #include <ngx_event.h>
+#include <nginx.h>
 #include "ngx_rtmp.h"
 
 
@@ -20,12 +22,12 @@ static ngx_int_t ngx_rtmp_add_addrs6(ngx_conf_t *cf, ngx_rtmp_port_t *mport,
     ngx_rtmp_conf_addr_t *addr);
 #endif
 static ngx_int_t ngx_rtmp_cmp_conf_addrs(const void *one, const void *two);
-static ngx_int_t ngx_rtmp_init_events(ngx_conf_t *cf, 
+static ngx_int_t ngx_rtmp_init_events(ngx_conf_t *cf,
         ngx_rtmp_core_main_conf_t *cmcf);
-static ngx_int_t ngx_rtmp_init_event_handlers(ngx_conf_t *cf, 
+static ngx_int_t ngx_rtmp_init_event_handlers(ngx_conf_t *cf,
         ngx_rtmp_core_main_conf_t *cmcf);
-static char * ngx_rtmp_merge_applications(ngx_conf_t *cf, 
-        ngx_array_t *applications, void **app_conf, ngx_rtmp_module_t *module, 
+static char * ngx_rtmp_merge_applications(ngx_conf_t *cf,
+        ngx_array_t *applications, void **app_conf, ngx_rtmp_module_t *module,
         ngx_uint_t ctx_index);
 
 
@@ -245,7 +247,7 @@ ngx_rtmp_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
                 /*ctx->app_conf = cscfp[s]->ctx->loc_conf;*/
 
-                rv = module->merge_app_conf(cf, 
+                rv = module->merge_app_conf(cf,
                                             ctx->app_conf[mi],
                                             cscfp[s]->ctx->app_conf[mi]);
                 if (rv != NGX_CONF_OK) {
@@ -341,7 +343,7 @@ ngx_rtmp_merge_applications(ngx_conf_t *cf, ngx_array_t *applications,
         }
 
         cacf = (*cacfp)->app_conf[ngx_rtmp_core_module.ctx_index];
-        rv = ngx_rtmp_merge_applications(cf, &cacf->applications, 
+        rv = ngx_rtmp_merge_applications(cf, &cacf->applications,
                                          (*cacfp)->app_conf,
                                          module, ctx_index);
         if (rv != NGX_CONF_OK) {
@@ -361,14 +363,14 @@ ngx_rtmp_init_events(ngx_conf_t *cf, ngx_rtmp_core_main_conf_t *cmcf)
     size_t                      n;
 
     for(n = 0; n < NGX_RTMP_MAX_EVENT; ++n) {
-        if (ngx_array_init(&cmcf->events[n], cf->pool, 1, 
+        if (ngx_array_init(&cmcf->events[n], cf->pool, 1,
                 sizeof(ngx_rtmp_handler_pt)) != NGX_OK)
         {
             return NGX_ERROR;
         }
     }
 
-    if (ngx_array_init(&cmcf->amf, cf->pool, 1, 
+    if (ngx_array_init(&cmcf->amf, cf->pool, 1,
                 sizeof(ngx_rtmp_amf_handler_t)) != NGX_OK)
     {
         return NGX_ERROR;
@@ -431,7 +433,7 @@ ngx_rtmp_init_event_handlers(ngx_conf_t *cf, ngx_rtmp_core_main_conf_t *cmcf)
     for(n = 0; n < cmcf->amf.nelts; ++n, ++h) {
         ha = cmcf->amf_arrays.elts;
         for(m = 0; m < cmcf->amf_arrays.nelts; ++m, ++ha) {
-            if (h->name.len == ha->key.len 
+            if (h->name.len == ha->key.len
                     && !ngx_strncmp(h->name.data, ha->key.data, ha->key.len))
             {
                 break;
@@ -441,7 +443,7 @@ ngx_rtmp_init_event_handlers(ngx_conf_t *cf, ngx_rtmp_core_main_conf_t *cmcf)
             ha = ngx_array_push(&cmcf->amf_arrays);
             ha->key = h->name;
             ha->key_hash = ngx_hash_key_lc(ha->key.data, ha->key.len);
-            ha->value = ngx_array_create(cf->pool, 1, 
+            ha->value = ngx_array_create(cf->pool, 1,
                     sizeof(ngx_rtmp_handler_pt));
             if (ha->value == NULL) {
                 return NGX_ERROR;
@@ -685,7 +687,11 @@ ngx_rtmp_add_addrs(ngx_conf_t *cf, ngx_rtmp_port_t *mport,
 
         addrs[i].conf.ctx = addr[i].ctx;
 
-        len = ngx_sock_ntop(addr[i].sockaddr, buf, NGX_SOCKADDR_STRLEN, 1);
+        len = ngx_sock_ntop(addr[i].sockaddr,
+#if (nginx_version >= 1005003)
+                            addr[i].socklen,
+#endif
+                            buf, NGX_SOCKADDR_STRLEN, 1);
 
         p = ngx_pnalloc(cf->pool, len);
         if (p == NULL) {
@@ -730,7 +736,11 @@ ngx_rtmp_add_addrs6(ngx_conf_t *cf, ngx_rtmp_port_t *mport,
 
         addrs6[i].conf.ctx = addr[i].ctx;
 
-        len = ngx_sock_ntop(addr[i].sockaddr, buf, NGX_SOCKADDR_STRLEN, 1);
+        len = ngx_sock_ntop(addr[i].sockaddr,
+#if (nginx_version >= 1005003)
+                            addr[i].socklen,
+#endif
+                            buf, NGX_SOCKADDR_STRLEN, 1);
 
         p = ngx_pnalloc(cf->pool, len);
         if (p == NULL) {

@@ -1,5 +1,6 @@
+
 /*
- * Copyright (c) 2012 Roman Arutyunyan
+ * Copyright (C) Roman Arutyunyan
  */
 
 
@@ -96,7 +97,11 @@ typedef struct {
 } ngx_rtmp_set_buflen_t;
 
 
-typedef ngx_int_t (*ngx_rtmp_connect_pt)(ngx_rtmp_session_t *s, 
+void ngx_rtmp_cmd_fill_args(u_char name[NGX_RTMP_MAX_NAME],
+        u_char args[NGX_RTMP_MAX_ARGS]);
+
+
+typedef ngx_int_t (*ngx_rtmp_connect_pt)(ngx_rtmp_session_t *s,
         ngx_rtmp_connect_t *v);
 typedef ngx_int_t (*ngx_rtmp_disconnect_pt)(ngx_rtmp_session_t *s);
 typedef ngx_int_t (*ngx_rtmp_create_stream_pt)(ngx_rtmp_session_t *s,
@@ -105,13 +110,13 @@ typedef ngx_int_t (*ngx_rtmp_close_stream_pt)(ngx_rtmp_session_t *s,
         ngx_rtmp_close_stream_t *v);
 typedef ngx_int_t (*ngx_rtmp_delete_stream_pt)(ngx_rtmp_session_t *s,
         ngx_rtmp_delete_stream_t *v);
-typedef ngx_int_t (*ngx_rtmp_publish_pt)(ngx_rtmp_session_t *s, 
+typedef ngx_int_t (*ngx_rtmp_publish_pt)(ngx_rtmp_session_t *s,
         ngx_rtmp_publish_t *v);
-typedef ngx_int_t (*ngx_rtmp_play_pt)(ngx_rtmp_session_t *s, 
+typedef ngx_int_t (*ngx_rtmp_play_pt)(ngx_rtmp_session_t *s,
         ngx_rtmp_play_t *v);
-typedef ngx_int_t (*ngx_rtmp_seek_pt)(ngx_rtmp_session_t *s, 
+typedef ngx_int_t (*ngx_rtmp_seek_pt)(ngx_rtmp_session_t *s,
         ngx_rtmp_seek_t *v);
-typedef ngx_int_t (*ngx_rtmp_pause_pt)(ngx_rtmp_session_t *s, 
+typedef ngx_int_t (*ngx_rtmp_pause_pt)(ngx_rtmp_session_t *s,
         ngx_rtmp_pause_t *v);
 
 typedef ngx_int_t (*ngx_rtmp_stream_begin_pt)(ngx_rtmp_session_t *s,

@@ -1,5 +1,6 @@
+
 /*
- * Copyright (c) 2012 Roman Arutyunyan
+ * Copyright (C) Roman Arutyunyan
  */
 
 
@@ -20,7 +21,7 @@ static ngx_rtmp_stream_eof_pt           next_stream_eof;
 
 static ngx_int_t ngx_rtmp_live_postconfiguration(ngx_conf_t *cf);
 static void * ngx_rtmp_live_create_app_conf(ngx_conf_t *cf);
-static char * ngx_rtmp_live_merge_app_conf(ngx_conf_t *cf, 
+static char * ngx_rtmp_live_merge_app_conf(ngx_conf_t *cf,
        void *parent, void *child);
 static char *ngx_rtmp_live_set_msec_slot(ngx_conf_t *cf, ngx_command_t *cmd,
        void *conf);
@@ -35,13 +36,6 @@ static ngx_command_t  ngx_rtmp_live_commands[] = {
       ngx_conf_set_flag_slot,
       NGX_RTMP_APP_CONF_OFFSET,
       offsetof(ngx_rtmp_live_app_conf_t, live),
-      NULL },
-
-    { ngx_string("meta"),
-      NGX_RTMP_MAIN_CONF|NGX_RTMP_SRV_CONF|NGX_RTMP_APP_CONF|NGX_CONF_TAKE1,
-      ngx_conf_set_flag_slot,
-      NGX_RTMP_APP_CONF_OFFSET,
-      offsetof(ngx_rtmp_live_app_conf_t, meta),
       NULL },
 
     { ngx_string("stream_buckets"),
@@ -100,6 +94,13 @@ static ngx_command_t  ngx_rtmp_live_commands[] = {
       offsetof(ngx_rtmp_live_app_conf_t, play_restart),
       NULL },
 
+    { ngx_string("idle_streams"),
+      NGX_RTMP_MAIN_CONF|NGX_RTMP_SRV_CONF|NGX_RTMP_APP_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_flag_slot,
+      NGX_RTMP_APP_CONF_OFFSET,
+      offsetof(ngx_rtmp_live_app_conf_t, idle_streams),
+      NULL },
+
     { ngx_string("drop_idle_publisher"),
       NGX_RTMP_MAIN_CONF|NGX_RTMP_SRV_CONF|NGX_RTMP_APP_CONF|NGX_CONF_TAKE1,
       ngx_rtmp_live_set_msec_slot,
@@ -150,7 +151,6 @@ ngx_rtmp_live_create_app_conf(ngx_conf_t *cf)
     }
 
     lacf->live = NGX_CONF_UNSET;
-    lacf->meta = NGX_CONF_UNSET;
     lacf->nbuckets = NGX_CONF_UNSET;
     lacf->buflen = NGX_CONF_UNSET_MSEC;
     lacf->sync = NGX_CONF_UNSET_MSEC;
@@ -160,6 +160,7 @@ ngx_rtmp_live_create_app_conf(ngx_conf_t *cf)
     lacf->wait_video = NGX_CONF_UNSET;
     lacf->publish_notify = NGX_CONF_UNSET;
     lacf->play_restart = NGX_CONF_UNSET;
+    lacf->idle_streams = NGX_CONF_UNSET;
 
     return lacf;
 }
@@ -172,7 +173,6 @@ ngx_rtmp_live_merge_app_conf(ngx_conf_t *cf, void *parent, void *child)
     ngx_rtmp_live_app_conf_t *conf = child;
 
     ngx_conf_merge_value(conf->live, prev->live, 0);
-    ngx_conf_merge_value(conf->meta, prev->meta, 1);
     ngx_conf_merge_value(conf->nbuckets, prev->nbuckets, 1024);
     ngx_conf_merge_msec_value(conf->buflen, prev->buflen, 0);
     ngx_conf_merge_msec_value(conf->sync, prev->sync, 300);
@@ -182,13 +182,14 @@ ngx_rtmp_live_merge_app_conf(ngx_conf_t *cf, void *parent, void *child)
     ngx_conf_merge_value(conf->wait_video, prev->wait_video, 0);
     ngx_conf_merge_value(conf->publish_notify, prev->publish_notify, 0);
     ngx_conf_merge_value(conf->play_restart, prev->play_restart, 0);
+    ngx_conf_merge_value(conf->idle_streams, prev->idle_streams, 1);
 
     conf->pool = ngx_create_pool(4096, &cf->cycle->new_log);
     if (conf->pool == NULL) {
         return NGX_CONF_ERROR;
     }
 
-    conf->streams = ngx_pcalloc(cf->pool, 
+    conf->streams = ngx_pcalloc(cf->pool,
             sizeof(ngx_rtmp_live_stream_t *) * conf->nbuckets);
 
     return NGX_CONF_OK;
@@ -252,7 +253,7 @@ ngx_rtmp_live_get_stream(ngx_rtmp_session_t *s, u_char *name, int create)
         *stream = ngx_palloc(lacf->pool, sizeof(ngx_rtmp_live_stream_t));
     }
     ngx_memzero(*stream, sizeof(ngx_rtmp_live_stream_t));
-    ngx_memcpy((*stream)->name, name, 
+    ngx_memcpy((*stream)->name, name,
             ngx_min(sizeof((*stream)->name) - 1, len));
     (*stream)->epoch = ngx_current_msec;
 
@@ -260,7 +261,7 @@ ngx_rtmp_live_get_stream(ngx_rtmp_session_t *s, u_char *name, int create)
 }
 
 
-static void 
+static void
 ngx_rtmp_live_idle(ngx_event_t *pev)
 {
     ngx_connection_t           *c;
@@ -510,11 +511,22 @@ ngx_rtmp_live_join(ngx_rtmp_session_t *s, u_char *name, unsigned publisher)
 
     ctx->session = s;
 
-    ngx_log_debug1(NGX_LOG_DEBUG_RTMP, s->connection->log, 0, 
+    ngx_log_debug1(NGX_LOG_DEBUG_RTMP, s->connection->log, 0,
                    "live: join '%s'", name);
 
-    stream = ngx_rtmp_live_get_stream(s, name, 1);
-    if (stream == NULL) {
+    stream = ngx_rtmp_live_get_stream(s, name, publisher || lacf->idle_streams);
+
+    if (stream == NULL ||
+        !(publisher || (*stream)->publishing || lacf->idle_streams))
+    {
+        ngx_log_error(NGX_LOG_ERR, s->connection->log, 0,
+                      "live: stream not found");
+
+        ngx_rtmp_send_status(s, "NetStream.Play.StreamNotFound", "error",
+                             "No such stream");
+
+        ngx_rtmp_finalize_session(s);
+
         return;
     }
 
@@ -554,7 +566,8 @@ ngx_rtmp_live_join(ngx_rtmp_session_t *s, u_char *name, unsigned publisher)
 static ngx_int_t
 ngx_rtmp_live_close_stream(ngx_rtmp_session_t *s, ngx_rtmp_close_stream_t *v)
 {
-    ngx_rtmp_live_ctx_t            *ctx, **cctx;
+    ngx_rtmp_session_t             *ss;
+    ngx_rtmp_live_ctx_t            *ctx, **cctx, *pctx;
     ngx_rtmp_live_stream_t        **stream;
     ngx_rtmp_live_app_conf_t       *lacf;
 
@@ -590,6 +603,21 @@ ngx_rtmp_live_close_stream(ngx_rtmp_session_t *s, ngx_rtmp_close_stream_t *v)
 
     if (ctx->publishing || ctx->stream->active) {
         ngx_rtmp_live_stop(s);
+    }
+
+    if (ctx->publishing) {
+        ngx_rtmp_send_status(s, "NetStream.Unpublish.Success",
+                             "status", "Stop publishing");
+        if (!lacf->idle_streams) {
+            for (pctx = ctx->stream->ctx; pctx; pctx = pctx->next) {
+                if (pctx->publishing == 0) {
+                    ss = pctx->session;
+                    ngx_log_debug0(NGX_LOG_DEBUG_RTMP, ss->connection->log, 0,
+                                   "live: no publisher");
+                    ngx_rtmp_finalize_session(ss);
+                }
+            }
+        }
     }
 
     if (ctx->stream->ctx) {
@@ -665,7 +693,7 @@ next:
 }
 
 static ngx_int_t
-ngx_rtmp_live_av(ngx_rtmp_session_t *s, ngx_rtmp_header_t *h, 
+ngx_rtmp_live_av(ngx_rtmp_session_t *s, ngx_rtmp_header_t *h,
                  ngx_chain_t *in)
 {
     ngx_rtmp_live_ctx_t            *ctx, *pctx;
@@ -721,6 +749,8 @@ ngx_rtmp_live_av(ngx_rtmp_session_t *s, ngx_rtmp_header_t *h,
                    "live: %s packet timestamp=%uD",
                    type_s, h->timestamp);
 
+    s->current_time = h->timestamp;
+
     peers = 0;
     apkt = NULL;
     aapkt = NULL;
@@ -753,7 +783,7 @@ ngx_rtmp_live_av(ngx_rtmp_session_t *s, ngx_rtmp_header_t *h,
         lh.timestamp = cs->timestamp;
     }
 
-    clh = ch;
+    clh = lh;
     clh.type = (h->type == NGX_RTMP_MSG_AUDIO ? NGX_RTMP_MSG_VIDEO :
                                                 NGX_RTMP_MSG_AUDIO);
 
@@ -809,7 +839,7 @@ ngx_rtmp_live_av(ngx_rtmp_session_t *s, ngx_rtmp_header_t *h,
             }
         }
 
-        if (lacf->meta && codec_ctx->meta) {
+        if (codec_ctx->meta) {
             meta = codec_ctx->meta;
             meta_version = codec_ctx->meta_version;
         }
@@ -920,6 +950,7 @@ ngx_rtmp_live_av(ngx_rtmp_session_t *s, ngx_rtmp_header_t *h,
 
                 cs->timestamp = lh.timestamp;
                 cs->active = 1;
+                ss->current_time = cs->timestamp;
 
             } else {
 
@@ -941,6 +972,7 @@ ngx_rtmp_live_av(ngx_rtmp_session_t *s, ngx_rtmp_header_t *h,
 
                 cs->timestamp = ch.timestamp;
                 cs->active = 1;
+                ss->current_time = cs->timestamp;
 
                 ++peers;
 
@@ -974,6 +1006,7 @@ ngx_rtmp_live_av(ngx_rtmp_session_t *s, ngx_rtmp_header_t *h,
 
         cs->timestamp += delta;
         ++peers;
+        ss->current_time = cs->timestamp;
     }
 
     if (rpkt) {
@@ -994,6 +1027,11 @@ ngx_rtmp_live_av(ngx_rtmp_session_t *s, ngx_rtmp_header_t *h,
 
     ngx_rtmp_update_bandwidth(&ctx->stream->bw_in, h->mlen);
     ngx_rtmp_update_bandwidth(&ctx->stream->bw_out, h->mlen * peers);
+
+    ngx_rtmp_update_bandwidth(h->type == NGX_RTMP_MSG_AUDIO ?
+                              &ctx->stream->bw_in_audio :
+                              &ctx->stream->bw_in_video,
+                              h->mlen);
 
     return NGX_OK;
 }
@@ -1050,7 +1088,7 @@ ngx_rtmp_live_play(ngx_rtmp_session_t *s, ngx_rtmp_play_t *v)
 
     ngx_log_debug4(NGX_LOG_DEBUG_RTMP, s->connection->log, 0,
                    "live: play: name='%s' start=%uD duration=%uD reset=%d",
-                   v->name, (uint32_t) v->start, 
+                   v->name, (uint32_t) v->start,
                    (uint32_t) v->duration, (uint32_t) v->reset);
 
     /* join stream as subscriber */

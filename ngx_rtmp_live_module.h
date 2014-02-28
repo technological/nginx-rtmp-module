@@ -1,5 +1,6 @@
+
 /*
- * Copyright (c) 2012 Roman Arutyunyan
+ * Copyright (C) Roman Arutyunyan
  */
 
 
@@ -47,6 +48,8 @@ struct ngx_rtmp_live_stream_s {
     ngx_rtmp_live_stream_t             *next;
     ngx_rtmp_live_ctx_t                *ctx;
     ngx_rtmp_bandwidth_t                bw_in;
+    ngx_rtmp_bandwidth_t                bw_in_audio;
+    ngx_rtmp_bandwidth_t                bw_in_video;
     ngx_rtmp_bandwidth_t                bw_out;
     ngx_msec_t                          epoch;
     unsigned                            active:1;
@@ -67,6 +70,7 @@ typedef struct {
     ngx_flag_t                          wait_video;
     ngx_flag_t                          publish_notify;
     ngx_flag_t                          play_restart;
+    ngx_flag_t                          idle_streams;
     ngx_msec_t                          buflen;
     ngx_pool_t                         *pool;
     ngx_rtmp_live_stream_t             *free_streams;
